@@ -296,8 +296,7 @@
       const [stats, setStats] = useState({ zone: 0, fixture: 0, pathway: 0, hangers: 0, stands: 0 });
       const [draggingId, setDraggingId] = useState(null);
       const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-      const [showConfigModal, setShowConfigModal] = useState(false);
-      const [configInputText, setConfigInputText] = useState('');
+      const [showSaveModal, setShowSaveModal] = useState(false);
       const gridRef = useRef(null);
 
       // 충돌 방지용 상태 Ref
@@ -592,17 +591,33 @@
         setDraggingId(null);
       };
 
-      const handleSaveCustomFirebase = () => {
-        try {
-          if (!configInputText.trim()) {
-            localStorage.removeItem(FIREBASE_CONFIG_KEY); setFirebaseConfig(null);
-            showAlert('설정 해제', '커스텀 클라우드 연동이 해제되었습니다.'); setShowConfigModal(false); return;
+      const handleManualSave = async () => {
+        const updatedStores = stores.map(s => {
+          if (s.id === currentStoreId) {
+            return {
+              ...s, grid, fixtures, storeName: eventInfo.storeName, title: eventInfo.title,
+              subtitle: eventInfo.subtitle, oldDate: eventInfo.oldDate, newDate: eventInfo.newDate, directionText
+            };
           }
-          const parsed = JSON.parse(configInputText);
-          localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(parsed));
-          setFirebaseConfig(parsed); setShowConfigModal(false);
-          showAlert('설정 성공', '클라우드 정보가 적용되었습니다.');
-        } catch (e) { showAlert('입력 에러', '올바른 JSON 형식이 아닙니다.'); }
+          return s;
+        });
+        setStores(updatedStores);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedStores));
+
+        if (isCloudEnabled && user && dbInstance) {
+          try {
+            await dbInstance.collection('artifacts').doc(appId)
+              .collection('public').doc('data')
+              .collection('stores').doc(currentStoreId).set({
+                id: currentStoreId, storeName: eventInfo.storeName, title: eventInfo.title, subtitle: eventInfo.subtitle,
+                oldDate: eventInfo.oldDate, newDate: eventInfo.newDate, directionText,
+                gridSerialized: JSON.stringify(grid), fixtures,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+          } catch (err) { console.error(err); }
+        }
+        setShowSaveModal(false);
+        showAlert('저장 완료', '작업하신 모든 내용이 성공적으로 저장되었습니다.');
       };
 
       const handleMouseLeaveGrid = () => { setIsDrawing(false); setDrawingTool(null); setHoverPos(null); };
@@ -719,13 +734,10 @@
                 <button onClick={() => showConfirm('초기화', '현재 매장의 모든 데이터를 지우시겠습니까?', () => { setGrid(generateInitialGrid()); setFixtures([]); })} className="w-full flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-sm font-bold"><Icons.Blank /> 도면 초기화</button>
               </div>
 
-              <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider font-mono">깃허브 / 클라우드 연동</h2>
+              <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider font-mono">데이터 저장</h2>
               <div className="space-y-2 mb-6">
-                <button onClick={() => { 
-                  setConfigInputText(firebaseConfig ? JSON.stringify(firebaseConfig, null, 2) : ''); 
-                  setShowConfigModal(true); 
-                }} className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-colors text-sm font-bold">
-                  <Icons.Settings /> 연동 및 DB 관리
+                <button onClick={() => setShowSaveModal(true)} className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-colors text-sm font-bold">
+                  <Icons.Cloud /> 저장하기
                 </button>
               </div>
 
@@ -894,29 +906,19 @@
             </div>
           )}
 
-          {/* 클라우드 DB 상세 설정 모달 */}
-          {showConfigModal && (
+          {/* 수동 저장 확인 모달 */}
+          {showSaveModal && (
             <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm no-print">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full mx-4 border border-slate-200">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-slate-200">
                 <h3 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
-                  <Icons.Cloud className="text-indigo-600" /> Firebase 실시간 DB 연동
+                  <Icons.Cloud className="text-indigo-600" /> 작업 내용 저장
                 </h3>
-                <p className="text-slate-500 mb-4 text-xs leading-relaxed">
-                  깃허브 페이지 등 외부 호스팅에서 여러 유저와 동시에 협업하려면 본인의 <b>Firebase 프로젝트</b>에서 설정 값을 복사하여 아래에 입력하세요. 
-                  미입력 시 에디터는 로컬 스토리지 단독 보존 모드로 무중단 작동합니다.
+                <p className="text-slate-600 mb-6 text-sm leading-relaxed">
+                  현재 작업 중인 모든 도면과 매장 데이터가 클라우드 서버 및 기기에 안전하게 저장됩니다.<br/><br/>저장하시겠습니까?
                 </p>
-                <textarea
-                  value={configInputText}
-                  onChange={(e) => setConfigInputText(e.target.value)}
-                  placeholder={`{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "...",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}`}
-                  className="w-full h-44 font-mono text-xs p-3 bg-slate-900 text-emerald-400 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
-                ></textarea>
-                <div className="flex justify-between items-center text-xs text-slate-400">
-                  <span>* 입력창을 완전히 비우고 확인을 누르면 설정이 해제됩니다.</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowConfigModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium rounded-xl transition-colors">취소</button>
-                    <button onClick={handleSaveCustomFirebase} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-lg shadow-indigo-200">설정 적용</button>
-                  </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowSaveModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-medium rounded-xl transition-colors">취소</button>
+                  <button onClick={handleManualSave} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors shadow-lg shadow-indigo-200">저장하기</button>
                 </div>
               </div>
             </div>
