@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>행사 레이아웃 에디터</title>
+  <title>행사 레이아웃 에디터 - 다중 매장 관리</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -33,9 +33,20 @@
         background: transparent !important;
         color: black !important;
       }
+      .no-print {
+        display: none !important;
+      }
     }
     .fixture-item {
       touch-action: none;
+    }
+    /* Custom Scrollbar for Sidebar */
+    aside::-webkit-scrollbar {
+      width: 4px;
+    }
+    aside::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 10px;
     }
   </style>
 </head>
@@ -46,6 +57,7 @@
     const { useState, useEffect, useCallback, useRef } = React;
 
     // --- 상수 및 설정 ---
+    const STORAGE_KEY = 'EVENT_LAYOUT_STORES_DATA';
     const DEFAULT_COLS = 22; 
     const DEFAULT_ROWS = 40; 
     const CELL_SIZE = 24;
@@ -89,38 +101,41 @@
       [TOOLS.PATHWAY]: 'bg-gray-200/60 border-gray-300/60 hover:bg-gray-300/60',
     };
 
+    // 셀 값에 따른 색상 클래스 반환 함수
     const getCellColorClass = (cellValue) => {
       if (cellValue >= 10 && cellValue < 20) {
         return ZONE_COLORS[cellValue - 10].classes;
       }
-      return TOOL_COLORS[cellValue];
+      return TOOL_COLORS[cellValue] || 'bg-white';
     };
 
-    const generateInitialGrid = () => {
-      return Array(DEFAULT_ROWS).fill().map(() => Array(DEFAULT_COLS).fill(TOOLS.EMPTY));
+    // 초기 도면 데이터 생성 함수
+    const generateInitialGrid = (rows = DEFAULT_ROWS, cols = DEFAULT_COLS) => {
+      return Array(rows).fill().map(() => Array(cols).fill(TOOLS.EMPTY));
     };
 
     const Icons = {
       Eraser: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M20 20H7L3 16C2.5 15.5 2.5 14.5 3 14L13 4C13.5 3.5 14.5 3.5 15 4L20 9C20.5 9.5 20.5 10.5 20 11L11 20" />
-        </svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16C2.5 15.5 2.5 14.5 3 14L13 4C13.5 3.5 14.5 3.5 15 4L20 9C20.5 9.5 20.5 10.5 20 11L11 20" /></svg>
       ),
       Blank: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <path d="M9 9l6 6" /><path d="M15 9l-6 6" />
-        </svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="M9 9l6 6" /><path d="M15 9l-6 6" /></svg>
       ),
       Print: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 6 2 18 2 18 9"></polyline>
-          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-          <rect x="6" y="14" width="12" height="8"></rect>
-        </svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      ),
+      Store: () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+      ),
+      Plus: () => (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      ),
+      Trash: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
       )
     };
 
+    // 공통 도구 버튼 컴포넌트
     function ToolButton({ active, onClick, icon, label, desc }) {
       return (
         <button 
@@ -141,6 +156,7 @@
       );
     }
 
+    // 수정 가능한 텍스트 필드 컴포넌트
     function EditableField({ value, onChange, className = '', inputClassName = '' }) {
       const [isEditing, setIsEditing] = useState(false);
       const [tempValue, setTempValue] = useState(value);
@@ -187,39 +203,93 @@
     }
 
     function App() {
-      const [grid, setGrid] = useState(generateInitialGrid());
-      const [fixtures, setFixtures] = useState([]); 
+      // --- 다중 매장 데이터 로직 ---
+      const [stores, setStores] = useState(() => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) return JSON.parse(saved);
+        return [{
+          id: 'default',
+          storeName: '현대프리미엄아울렛',
+          title: '스페이스1 행사 레이아웃 에디터',
+          subtitle: '2층 이벤트플라자 | 참여: D,S,P,R,Z & 에스제이듀코+삼성물산',
+          oldDate: '행사일정',
+          newDate: '26.06.05(금) ~ 06.09(화)',
+          directionText: { left: '← 통로 방향', right: '계단/ELV실 방향 →', bottom: '도면 하단 (매장 안쪽)' },
+          grid: generateInitialGrid(),
+          fixtures: []
+        }];
+      });
+
+      const [currentStoreId, setCurrentStoreId] = useState(stores[0].id);
+      const currentStore = stores.find(s => s.id === currentStoreId) || stores[0];
+
+      // 개별 상태들 (현재 매장 데이터와 동기화됨)
+      const [grid, setGrid] = useState(currentStore.grid);
+      const [fixtures, setFixtures] = useState(currentStore.fixtures);
+      const [eventInfo, setEventInfo] = useState({
+        storeName: currentStore.storeName,
+        title: currentStore.title,
+        subtitle: currentStore.subtitle,
+        oldDate: currentStore.oldDate,
+        newDate: currentStore.newDate
+      });
+      const [directionText, setDirectionText] = useState(currentStore.directionText);
+
+      // 매장 변경 시 상태 업데이트
+      useEffect(() => {
+        const store = stores.find(s => s.id === currentStoreId);
+        if (store) {
+          setGrid(store.grid);
+          setFixtures(store.fixtures);
+          setEventInfo({
+            storeName: store.storeName,
+            title: store.title,
+            subtitle: store.subtitle,
+            oldDate: store.oldDate,
+            newDate: store.newDate
+          });
+          setDirectionText(store.directionText);
+        }
+      }, [currentStoreId]);
+
+      // 자동 저장 로직
+      useEffect(() => {
+        const updatedStores = stores.map(s => {
+          if (s.id === currentStoreId) {
+            return {
+              ...s,
+              grid,
+              fixtures,
+              storeName: eventInfo.storeName,
+              title: eventInfo.title,
+              subtitle: eventInfo.subtitle,
+              oldDate: eventInfo.oldDate,
+              newDate: eventInfo.newDate,
+              directionText
+            };
+          }
+          return s;
+        });
+        setStores(updatedStores);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedStores));
+      }, [grid, fixtures, eventInfo, directionText]);
+
+      // --- 에디터 UI 및 통계 로직 ---
       const [activeTool, setActiveTool] = useState(TOOLS.ZONE);
       const [activeZoneColor, setActiveZoneColor] = useState(0); 
       const [isDrawing, setIsDrawing] = useState(false);
       const [drawingTool, setDrawingTool] = useState(null);
       const [hoverPos, setHoverPos] = useState(null);
       const [stats, setStats] = useState({ zone: 0, fixture: 0, pathway: 0, hangers: 0, stands: 0 });
-
-      // 드래그 상태 관리
       const [draggingId, setDraggingId] = useState(null);
       const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+      const [showStoreMenu, setShowStoreMenu] = useState(false);
       const gridRef = useRef(null);
 
       const [modal, setModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null, isAlert: false });
-
       const showAlert = (title, message) => setModal({ isOpen: true, title, message, onConfirm: null, isAlert: true });
       const showConfirm = (title, message, onConfirm) => setModal({ isOpen: true, title, message, onConfirm, isAlert: false });
       const closeModal = () => setModal({ isOpen: false, title: '', message: '', onConfirm: null, isAlert: false });
-
-      const [eventInfo, setEventInfo] = useState({
-        storeName: '현대프리미엄아울렛',
-        title: '스페이스1 행사 레이아웃 에디터',
-        subtitle: '2층 이벤트플라자 | 참여: D,S,P,R,Z & 에스제이듀코+삼성물산',
-        oldDate: '행사일정',
-        newDate: '26.06.05(금) ~ 06.09(화)'
-      });
-
-      const [directionText, setDirectionText] = useState({
-        left: '← 통로 방향',
-        right: '계단/ELV실 방향 →',
-        bottom: '도면 하단 (매장 안쪽)'
-      });
 
       useEffect(() => {
         let zone = 0, fixture = 0, pathway = 0;
@@ -248,471 +318,266 @@
       const handleMouseDown = (e, y, x) => {
         if (e.button !== 0) return;
         e.preventDefault();
-        
         let toolToUse = activeTool;
         if (toolToUse === TOOLS.ZONE) toolToUse = 10 + activeZoneColor;
 
         if (toolToUse === TOOLS.HANGER || toolToUse === TOOLS.STAND) {
-          const posX = x * STEP + 12;
-          const posY = y * STEP + 12;
-          setFixtures(prev => [...prev, { 
-            id: Date.now() + Math.random(), 
-            type: toolToUse, 
-            x: posX, 
-            y: posY, 
-            rotation: 0 
-          }]);
+          setFixtures(prev => [...prev, { id: Date.now() + Math.random(), type: toolToUse, x: x * 25 + 12, y: y * 25 + 12, rotation: 0 }]);
           return;
         }
-
         setIsDrawing(true);
         setDrawingTool(toolToUse);
         updateCell(y, x, toolToUse);
       };
 
-      // 자유 이동용 드래그 로직
       const startDragging = (e, fixture) => {
         if (e.button !== 0) return;
         e.stopPropagation();
-        
         if (activeTool === TOOLS.ERASER) {
           setFixtures(prev => prev.filter(f => f.id !== fixture.id));
           return;
         }
-
         const rect = e.currentTarget.getBoundingClientRect();
         setDraggingId(fixture.id);
-        setDragOffset({
-          x: e.clientX - rect.left - rect.width / 2,
-          y: e.clientY - rect.top - rect.height / 2
-        });
-        
-        e.currentTarget.dataset.startX = e.clientX;
-        e.currentTarget.dataset.startY = e.clientY;
+        setDragOffset({ x: e.clientX - rect.left - rect.width / 2, y: e.clientY - rect.top - rect.height / 2 });
+        e.currentTarget.dataset.startX = e.clientX; 
+        e.currentTarget.dataset.startY = e.clientY; 
         e.currentTarget.dataset.startTime = Date.now();
       };
 
       const onPointerMove = (e) => {
         if (draggingId && gridRef.current) {
           const gridRect = gridRef.current.getBoundingClientRect();
-          const newX = e.clientX - gridRect.left - dragOffset.x;
-          const newY = e.clientY - gridRect.top - dragOffset.y;
-          
-          setFixtures(prev => prev.map(f => 
-            f.id === draggingId ? { ...f, x: newX, y: newY } : f
-          ));
+          setFixtures(prev => prev.map(f => f.id === draggingId ? { ...f, x: e.clientX - gridRect.left - dragOffset.x, y: e.clientY - gridRect.top - dragOffset.y } : f));
         }
       };
 
       const stopDragging = (e, fixture) => {
         if (draggingId !== fixture.id) return;
-        
-        const moveDist = Math.hypot(
-          e.clientX - parseFloat(e.currentTarget.dataset.startX),
-          e.clientY - parseFloat(e.currentTarget.dataset.startY)
-        );
-        const duration = Date.now() - parseInt(e.currentTarget.dataset.startTime);
-
-        if (moveDist < 5 && duration < 300) {
-          setFixtures(prev => prev.map(f => 
-            f.id === fixture.id ? { ...f, rotation: f.rotation + 90 } : f
-          ));
+        const moveDist = Math.hypot(e.clientX - parseFloat(e.currentTarget.dataset.startX), e.clientY - parseFloat(e.currentTarget.dataset.startY));
+        if (moveDist < 5 && (Date.now() - parseInt(e.currentTarget.dataset.startTime)) < 300) {
+          setFixtures(prev => prev.map(f => f.id === fixture.id ? { ...f, rotation: f.rotation + 90 } : f));
         }
-
         setDraggingId(null);
       };
 
-      const handleFixtureContextMenu = (e, id) => {
-        e.preventDefault();
+      const addNewStore = () => {
+        const newId = 'store_' + Date.now();
+        const newStore = {
+          id: newId,
+          storeName: '새 매장',
+          title: '새로운 행사 레이아웃',
+          subtitle: '상세 위치 정보를 입력하세요',
+          oldDate: '행사일정',
+          newDate: '기간을 입력하세요',
+          directionText: { left: '← 통로 방향', right: '방향 →', bottom: '도면 하단' },
+          grid: generateInitialGrid(),
+          fixtures: []
+        };
+        setStores(prev => [...prev, newStore]);
+        setCurrentStoreId(newId);
+        setShowStoreMenu(false);
+      };
+
+      const deleteStore = (e, id) => {
         e.stopPropagation();
-        setFixtures(prev => prev.filter(f => f.id !== id));
+        if (stores.length <= 1) {
+          showAlert('알림', '최소 하나의 매장은 유지되어야 합니다.');
+          return;
+        }
+        showConfirm('매장 삭제', '이 매장의 모든 데이터를 영구적으로 삭제하시겠습니까?', () => {
+          const filtered = stores.filter(s => s.id !== id);
+          setStores(filtered);
+          if (currentStoreId === id) setCurrentStoreId(filtered[0].id);
+        });
       };
 
-      const handleMouseEnter = (e, y, x) => {
-        setHoverPos({ x, y });
-        if (isDrawing && drawingTool !== null) updateCell(y, x, drawingTool);
-      };
-
-      // 도면 영역을 벗어날 때 호출되는 함수 (오류 수정 지점)
-      const handleMouseLeaveGrid = () => {
-        setIsDrawing(false);
-        setDrawingTool(null);
-        setHoverPos(null);
-      };
-
-      const handleMouseUp = () => {
-        setIsDrawing(false);
-        setDrawingTool(null);
-      };
-
-      const resetToInitial = () => {
-        showConfirm(
-          '빈 도면 시작하기',
-          '도면 크기를 포함하여 영역 및 집기 등 모든 내용을 완전히 지우고 초기화하시겠습니까?',
-          () => {
-            setGrid(generateInitialGrid());
-            setFixtures([]);
-          }
-        );
-      };
+      const handleMouseLeaveGrid = () => { setIsDrawing(false); setDrawingTool(null); setHoverPos(null); };
 
       return (
-        <div 
-          className="flex flex-col h-screen bg-gray-50 text-gray-800 font-sans select-none print:h-auto print:block print:bg-white" 
-          onMouseUp={handleMouseUp}
-          onPointerUp={() => setDraggingId(null)}
-          onPointerMove={onPointerMove}
-        >
-          {/* Header */}
-          <header className="bg-slate-800 text-white p-4 flex flex-col md:flex-row justify-between items-start md:items-center shadow-md z-10 print:bg-white print:text-black print:shadow-none print:p-0 print:mb-6">
-            <div className="mb-2 md:mb-0">
-              <h1 className="text-xl font-bold flex items-center gap-2 flex-wrap print:text-black">
-                <EditableField
-                  value={eventInfo.storeName}
-                  onChange={(val) => setEventInfo(prev => ({ ...prev, storeName: val }))}
-                  className="bg-white text-slate-800 px-2 py-1 rounded text-sm font-black tracking-tight print:border print:border-gray-400"
-                  inputClassName="text-sm px-2 py-1 w-36"
-                />
-                <EditableField
-                  value={eventInfo.title}
-                  onChange={(val) => setEventInfo(prev => ({ ...prev, title: val }))}
-                  inputClassName="w-64"
-                />
+        <div className="flex flex-col h-screen bg-gray-50 text-gray-800 font-sans select-none print:h-auto print:block print:bg-white" 
+             onMouseUp={() => { setIsDrawing(false); setDrawingTool(null); }} 
+             onPointerUp={() => setDraggingId(null)} onPointerMove={onPointerMove}>
+          
+          <header className="bg-slate-800 text-white p-4 flex flex-col md:flex-row justify-between items-start md:items-center shadow-md z-30 print:bg-white print:text-black print:shadow-none print:p-0 print:mb-6">
+            <div className="mb-2 md:mb-0 relative">
+              <h1 className="text-xl font-bold flex items-center gap-2 flex-wrap">
+                <div className="relative flex items-center bg-white pr-2 rounded-lg shadow-sm print:border print:border-gray-400">
+                  <button onClick={() => setShowStoreMenu(!showStoreMenu)} className="p-1.5 pl-2 text-slate-800 hover:bg-slate-100 rounded-l-lg transition-colors no-print border-r border-slate-100" title="매장 목록">
+                    <Icons.Store />
+                  </button>
+                  <div className="pl-1.5">
+                    <EditableField 
+                      value={eventInfo.storeName} 
+                      onChange={(val) => setEventInfo(prev => ({ ...prev, storeName: val }))} 
+                      className="text-slate-800 text-sm font-black tracking-tight cursor-text"
+                      inputClassName="text-sm px-1 w-32 font-black"
+                    />
+                  </div>
+                  {showStoreMenu && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 text-slate-800 overflow-hidden z-50 no-print">
+                      <div className="p-2 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        <span className="text-xs font-bold text-slate-500 uppercase px-2">내 매장 목록</span>
+                        <button onClick={addNewStore} className="p-1.5 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors" title="새 매장 추가"><Icons.Plus /></button>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        {stores.map(s => (
+                          <div key={s.id} onClick={() => { setCurrentStoreId(s.id); setShowStoreMenu(false); }}
+                               className={`flex items-center justify-between p-3 cursor-pointer transition-colors group ${currentStoreId === s.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-slate-50'}`}>
+                            <span className="truncate flex-1">{s.storeName}</span>
+                            <button onClick={(e) => deleteStore(e, s.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Icons.Trash /></button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <EditableField value={eventInfo.title} onChange={(val) => setEventInfo(prev => ({ ...prev, title: val }))} inputClassName="w-64" />
               </h1>
               <div className="mt-1">
-                <EditableField
-                  value={eventInfo.subtitle}
-                  onChange={(val) => setEventInfo(prev => ({ ...prev, subtitle: val }))}
-                  className="text-slate-300 text-sm inline-block print:text-gray-600"
-                  inputClassName="text-sm text-slate-800 w-96"
-                />
+                <EditableField value={eventInfo.subtitle} onChange={(val) => setEventInfo(prev => ({ ...prev, subtitle: val }))} className="text-slate-300 text-sm inline-block print:text-gray-600" inputClassName="text-sm text-slate-800 w-96" />
               </div>
             </div>
             <div className="text-left md:text-right text-sm bg-slate-700/50 p-2 rounded border border-slate-600 flex flex-col items-start md:items-end gap-1 min-w-[250px] print:bg-transparent print:border-none print:p-0">
-              <EditableField
-                value={eventInfo.oldDate}
-                onChange={(val) => setEventInfo(prev => ({ ...prev, oldDate: val }))}
-                className="text-slate-300 text-xs font-bold print:text-gray-500"
-                inputClassName="text-xs text-slate-800 w-full"
-              />
-              <EditableField
-                value={eventInfo.newDate}
-                onChange={(val) => setEventInfo(prev => ({ ...prev, newDate: val }))}
-                className="text-yellow-300 font-bold print:text-black print:text-lg"
-                inputClassName="text-sm text-slate-800 w-full font-bold"
-              />
+              <EditableField value={eventInfo.oldDate} onChange={(val) => setEventInfo(prev => ({ ...prev, oldDate: val }))} className="text-slate-300 text-xs font-bold print:text-gray-500" />
+              <EditableField value={eventInfo.newDate} onChange={(val) => setEventInfo(prev => ({ ...prev, newDate: val }))} className="text-yellow-300 font-bold print:text-black print:text-lg" />
             </div>
           </header>
 
           <div className="flex flex-1 overflow-hidden print:overflow-visible print:block">
-            {/* 사이드바 메뉴 */}
             <aside className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col shadow-sm z-10 overflow-y-auto print:hidden">
               <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">기초 그리기</h2>
               <div className="space-y-2 mb-6">
                 <div>
-                  <ToolButton 
-                    active={activeTool === TOOLS.ZONE} 
-                    onClick={() => setActiveTool(TOOLS.ZONE)}
-                    icon={<div className={`w-4 h-4 rounded-sm ${ZONE_COLORS[activeZoneColor].classes.split(' hover:')[0]}`}></div>}
-                    label="이벤트 영역" 
-                    desc="기본 바닥 영역 지정"
-                  />
+                  <ToolButton active={activeTool === TOOLS.ZONE} onClick={() => setActiveTool(TOOLS.ZONE)} icon={<div className={`w-4 h-4 rounded-sm ${ZONE_COLORS[activeZoneColor].classes.split(' hover:')[0]}`}></div>} label="이벤트 영역" desc="바닥 영역 지정" />
                   {activeTool === TOOLS.ZONE && (
                     <div className="flex flex-wrap gap-1.5 mt-2 p-2 bg-indigo-50 rounded-lg border border-indigo-100">
                       {ZONE_COLORS.map(color => (
-                        <button
-                          key={color.id}
-                          onClick={(e) => { e.stopPropagation(); setActiveZoneColor(color.id); }}
-                          className={`w-[22px] h-[22px] rounded border shadow-sm transition-transform ${activeZoneColor === color.id ? 'ring-2 ring-indigo-500 scale-110' : 'ring-1 ring-gray-200 hover:scale-105'} ${color.classes.split(' hover:')[0]}`}
-                          title={color.name}
-                        />
+                        <button key={color.id} onClick={() => setActiveZoneColor(color.id)} className={`w-[22px] h-[22px] rounded border shadow-sm transition-transform ${activeZoneColor === color.id ? 'ring-2 ring-indigo-500 scale-110' : 'ring-1 ring-gray-200 hover:scale-105'} ${color.classes.split(' hover:')[0]}`} title={color.name} />
                       ))}
                     </div>
                   )}
                 </div>
-                <ToolButton 
-                  active={activeTool === TOOLS.PATHWAY} 
-                  onClick={() => setActiveTool(TOOLS.PATHWAY)}
-                  icon={<div className="w-4 h-4 bg-gray-200/60 border border-gray-300/60 rounded-sm"></div>}
-                  label="동선 영역" 
-                  desc="고객 이동 통로 지정"
-                />
-                <ToolButton 
-                  active={activeTool === TOOLS.OBSTACLE} 
-                  onClick={() => setActiveTool(TOOLS.OBSTACLE)}
-                  icon={<div className="w-4 h-4 bg-gray-800/80 border border-gray-900/80 rounded-sm"></div>}
-                  label="기둥 / 구조물" 
-                  desc="고정된 장애물"
-                />
+                <ToolButton active={activeTool === TOOLS.PATHWAY} onClick={() => setActiveTool(TOOLS.PATHWAY)} icon={<div className="w-4 h-4 bg-gray-200/60 border border-gray-300/60 rounded-sm"></div>} label="동선 영역" desc="통로 지정" />
+                <ToolButton active={activeTool === TOOLS.OBSTACLE} onClick={() => setActiveTool(TOOLS.OBSTACLE)} icon={<div className="w-4 h-4 bg-gray-800/80 border border-gray-900/80 rounded-sm"></div>} label="기둥 / 구조물" desc="고정된 장애물" />
               </div>
 
               <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">집기 배치</h2>
               <div className="space-y-2 mb-6">
-                <ToolButton 
-                  active={activeTool === TOOLS.FIXTURE} 
-                  onClick={() => setActiveTool(TOOLS.FIXTURE)}
-                  icon={<div className="w-4 h-4 bg-orange-400/50 border border-orange-500/50 rounded-sm"></div>}
-                  label="자유형 집기 영역" 
-                  desc="칸 단위로 집기 영역 칠하기"
-                />
-                <ToolButton 
-                  active={activeTool === TOOLS.HANGER} 
-                  onClick={() => setActiveTool(TOOLS.HANGER)}
-                  icon={<div className="w-4 h-6 bg-yellow-300/50 border border-yellow-600/50 rounded-sm"></div>}
-                  label="행거 (40x120cm)" 
-                  desc="드래그 자유 이동 / 클릭 회전"
-                />
-                <ToolButton 
-                  active={activeTool === TOOLS.STAND} 
-                  onClick={() => setActiveTool(TOOLS.STAND)}
-                  icon={<div className="w-6 h-6 bg-green-300/50 border border-green-600/50 rounded-sm"></div>}
-                  label="매대 (75x150cm)" 
-                  desc="드래그 자유 이동 / 클릭 회전"
-                />
+                <ToolButton active={activeTool === TOOLS.FIXTURE} onClick={() => setActiveTool(TOOLS.FIXTURE)} icon={<div className="w-4 h-4 bg-orange-400/50 border border-orange-500/50 rounded-sm"></div>} label="자유형 집기" desc="칸 단위 칠하기" />
+                <ToolButton active={activeTool === TOOLS.HANGER} onClick={() => setActiveTool(TOOLS.HANGER)} icon={<div className="w-4 h-6 bg-yellow-300/50 border border-yellow-600/50 rounded-sm"></div>} label="행거 (40x120cm)" desc="자유 이동 / 클릭 회전" />
+                <ToolButton active={activeTool === TOOLS.STAND} onClick={() => setActiveTool(TOOLS.STAND)} icon={<div className="w-6 h-6 bg-green-300/50 border border-green-600/50 rounded-sm"></div>} label="매대 (75x150cm)" desc="자유 이동 / 클릭 회전" />
               </div>
 
-              <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">수정 도구</h2>
-              <div className="space-y-2 mb-8">
-                <ToolButton 
-                  active={activeTool === TOOLS.ERASER} 
-                  onClick={() => setActiveTool(TOOLS.ERASER)}
-                  icon={<Icons.Eraser />}
-                  label="지우개" 
-                  desc="그려진 요소 삭제 (우클릭)"
-                />
+              <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">수정 및 관리</h2>
+              <div className="space-y-2 mb-6">
+                <ToolButton active={activeTool === TOOLS.ERASER} onClick={() => setActiveTool(TOOLS.ERASER)} icon={<Icons.Eraser />} label="지우개" desc="요소 삭제 (우클릭)" />
+                <button onClick={() => window.print()} className="w-full flex items-center gap-3 p-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-bold"><Icons.Print /> A4 출력 / PDF 저장</button>
+                <button onClick={() => showConfirm('초기화', '현재 매장의 모든 데이터를 지우시겠습니까?', () => { setGrid(generateInitialGrid()); setFixtures([]); })} className="w-full flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-sm font-bold"><Icons.Blank /> 도면 초기화</button>
               </div>
 
               <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">도면 크기 조절</h2>
               <div className="flex flex-col gap-2 mb-8">
                 <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-gray-200">
-                  <span className="text-sm text-gray-700">가로 (열): <b>{grid[0].length}</b>칸</span>
+                  <span className="text-sm">가로 (열): <b>{grid[0].length}</b>칸</span>
                   <div className="flex gap-1">
-                    <button onClick={() => { if(grid[0].length > 5) { setGrid(g => g.map(r => r.slice(0,-1))); setFixtures(f => f.filter(fi => fi.x < (grid[0].length-1)*STEP)); }}} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-gray-600 font-bold">-</button>
-                    <button onClick={() => setGrid(g => g.map(r => [...r, TOOLS.EMPTY]))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-gray-600 font-bold">+</button>
+                    <button onClick={() => { if(grid[0].length > 5) { setGrid(g => g.map(r => r.slice(0,-1))); setFixtures(f => f.filter(fi => fi.x < (grid[0].length-1)*STEP)); }}} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 font-bold">-</button>
+                    <button onClick={() => setGrid(g => g.map(r => [...r, TOOLS.EMPTY]))} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 font-bold">+</button>
                   </div>
                 </div>
                 <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-gray-200">
-                  <span className="text-sm text-gray-700">세로 (행): <b>{grid.length}</b>칸</span>
+                  <span className="text-sm">세로 (행): <b>{grid.length}</b>칸</span>
                   <div className="flex gap-1">
-                    <button onClick={() => { if(grid.length > 5) { setGrid(g => g.slice(0,-1)); setFixtures(f => f.filter(fi => fi.y < (grid.length-1)*STEP)); }}} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-gray-600 font-bold">-</button>
-                    <button onClick={() => setGrid(g => [...g, Array(g[0].length).fill(TOOLS.EMPTY)])} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 text-gray-600 font-bold">+</button>
+                    <button onClick={() => { if(grid.length > 5) { setGrid(g => g.slice(0,-1)); setFixtures(f => f.filter(fi => fi.y < (grid.length-1)*STEP)); }}} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 font-bold">-</button>
+                    <button onClick={() => setGrid(g => [...g, Array(g[0].length).fill(TOOLS.EMPTY)])} className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded border border-gray-300 font-bold">+</button>
                   </div>
                 </div>
               </div>
 
-              <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">출력 및 관리</h2>
-              <div className="space-y-2 mb-8">
-                <button onClick={() => window.print()} className="w-full flex items-center gap-3 p-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-bold">
-                  <Icons.Print /> A4 출력 / PDF 저장
-                </button>
-                <button onClick={resetToInitial} className="w-full flex items-center gap-3 p-2 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-sm font-bold">
-                  <Icons.Blank /> 빈 도면 시작하기
-                </button>
-              </div>
-
-              <div className="mt-auto bg-blue-50 p-4 rounded-xl border border-blue-100">
-                <h3 className="font-bold text-blue-900 mb-2 text-sm">현재 도면 통계</h3>
-                <div className="space-y-2 text-sm text-blue-800">
-                  <div className="flex justify-between">
-                    <span>지정 영역:</span>
-                    <span className="font-mono font-bold">{(stats.zone * CELL_AREA_PYEONG).toFixed(1)} 평</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>배치된 집기:</span>
-                    <span className="font-mono font-bold">{stats.fixture} 칸</span>
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span>동선 영역:</span>
-                    <span className="font-mono font-bold">{(stats.pathway * CELL_AREA_PYEONG).toFixed(1)} 평</span>
-                  </div>
-                  <div className="flex justify-between mt-1 text-yellow-900">
-                    <span>추가된 행거:</span>
-                    <span className="font-mono font-bold">{stats.hangers} 개</span>
-                  </div>
-                  <div className="flex justify-between mt-1 text-green-900">
-                    <span>추가된 매대:</span>
-                    <span className="font-mono font-bold">{stats.stands} 개</span>
-                  </div>
-                  <div className="mt-2 text-xs text-blue-600 border-t border-blue-200 pt-2 font-medium">
-                    * 1칸 = 60cm x 60cm<br/>
-                    * 집기 드래그로 자유 이동 가능
-                  </div>
+              <div className="mt-auto bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <h3 className="font-bold text-slate-800 mb-2 text-sm uppercase">현재 매장 통계</h3>
+                <div className="space-y-2 text-sm text-slate-600">
+                  <div className="flex justify-between"><span>지정 영역:</span><span className="font-mono font-bold">{(stats.zone * CELL_AREA_PYEONG).toFixed(1)} 평</span></div>
+                  <div className="flex justify-between"><span>동선 영역:</span><span className="font-mono font-bold">{(stats.pathway * CELL_AREA_PYEONG).toFixed(1)} 평</span></div>
+                  <div className="flex justify-between text-yellow-700"><span>행거 개수:</span><span className="font-mono font-bold">{stats.hangers} 개</span></div>
+                  <div className="flex justify-between text-green-700"><span>매대 개수:</span><span className="font-mono font-bold">{stats.stands} 개</span></div>
                 </div>
               </div>
             </aside>
 
-            {/* 메인 도면 영역 */}
-            <main className="flex-1 bg-gray-200 overflow-auto relative print:bg-white print:overflow-visible print:block" onContextMenu={(e) => e.preventDefault()}>
+            <main className="flex-1 bg-slate-200 overflow-auto relative print:bg-white print:overflow-visible print:block" onContextMenu={e => e.preventDefault()}>
               <div className="absolute inset-0 p-8 flex justify-center items-start min-w-max print:relative print:p-0 print:pt-4 print:flex">
-                
-                <div className="bg-white shadow-2xl p-4 rounded-xl flex flex-col items-center print:shadow-none print:p-0">
+                <div className="bg-white shadow-2xl p-6 rounded-2xl flex flex-col items-center print:shadow-none print:p-0">
                   <div className="mb-2 flex justify-between w-full text-xs text-gray-500 font-mono">
-                    <EditableField
-                      value={directionText.left}
-                      onChange={(val) => setDirectionText(prev => ({ ...prev, left: val }))}
-                      inputClassName="w-32 text-xs"
-                    />
-                    <EditableField
-                      value={directionText.right}
-                      onChange={(val) => setDirectionText(prev => ({ ...prev, right: val }))}
-                      inputClassName="w-36 text-xs text-right"
-                      className="text-right"
-                    />
+                    <EditableField value={directionText.left} onChange={v => setDirectionText(p => ({ ...p, left: v }))} inputClassName="w-32 text-xs" />
+                    <EditableField value={directionText.right} onChange={v => setDirectionText(p => ({ ...p, right: v }))} inputClassName="w-36 text-xs text-right" className="text-right" />
                   </div>
                   
                   <div className="flex">
-                    {/* 세로 전체 길이 표시 */}
                     <div className="flex flex-col justify-center mr-2 pt-[48px]">
-                      <div className="text-[11px] text-indigo-600 font-bold tracking-wider bg-indigo-50/80 px-1.5 py-4 rounded-md shadow-sm border border-indigo-100 flex items-center justify-center select-none print:bg-transparent print:border-gray-300" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                      <div className="text-[11px] text-indigo-600 font-bold bg-indigo-50/80 px-1.5 py-4 rounded-md border border-indigo-100 flex items-center justify-center select-none print:bg-transparent print:border-gray-300" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                         ↕ 세로 전체 {(grid.length * 0.6).toFixed(1)}m
                       </div>
                     </div>
-
-                    {/* 세로 칸수 표시 */}
                     <div className="mr-1 flex flex-col items-end">
-                      <div className="h-[28px]"></div>
-                      <div className="h-[20px] flex items-end justify-end pb-1 pr-1 text-[9px] text-gray-400 font-bold select-none tracking-tighter">(칸)</div>
+                      <div className="h-[48px]"></div>
                       <div className="grid gap-[1px]" style={{ gridTemplateRows: `repeat(${grid.length}, 24px)` }}>
-                        {grid.map((_, y) => (
-                          <div key={`y-axis-${y}`} className="h-[24px] flex items-center justify-end text-[9px] text-gray-400 font-mono w-7 pr-1 select-none tracking-tighter">
-                            {y + 1}
-                          </div>
-                        ))}
+                        {grid.map((_, y) => <div key={y} className="h-[24px] flex items-center justify-end text-[9px] text-slate-400 font-mono w-7 pr-1">{(y+1)}</div>)}
                       </div>
                     </div>
-
                     <div className="flex flex-col">
-                      {/* 가로 전체 길이 표시 */}
-                      <div className="h-[24px] flex items-center justify-center text-[11px] text-indigo-600 font-bold tracking-wider bg-indigo-50/80 rounded-md shadow-sm border border-indigo-100 mb-1 ml-[2px] select-none print:bg-transparent print:border-gray-300">
+                      <div className="h-[24px] flex items-center justify-center text-[11px] text-indigo-600 font-bold bg-indigo-50/80 rounded-md border border-indigo-100 mb-1 ml-[2px] select-none print:bg-transparent print:border-gray-300">
                         ↔ 가로 전체 {(grid[0].length * 0.6).toFixed(1)}m
                       </div>
-
-                      {/* 가로 칸수 표시 */}
                       <div className="grid gap-[1px] mb-1 ml-[2px]" style={{ gridTemplateColumns: `repeat(${grid[0].length}, 24px)` }}>
-                        {grid[0].map((_, x) => (
-                          <div key={`x-axis-${x}`} className="w-[24px] flex items-end justify-center text-[8px] text-gray-400 font-mono h-4 select-none tracking-tighter">
-                            {x + 1}
-                          </div>
-                        ))}
+                        {grid[0].map((_, x) => <div key={x} className="w-[24px] flex items-end justify-center text-[8px] text-slate-400 font-mono h-4">{(x+1)}</div>)}
                       </div>
-
-                      <div 
-                        ref={gridRef}
-                        className="grid gap-[1px] bg-gray-300 border-2 border-gray-400 relative"
-                        style={{ 
-                          gridTemplateColumns: `repeat(${grid[0].length}, 24px)`, 
-                          gridTemplateRows: `repeat(${grid.length}, 24px)` 
-                        }}
-                        onMouseLeave={handleMouseLeaveGrid}
-                      >
-                        {grid.map((row, y) => 
-                          row.map((cell, x) => (
-                            <div 
-                              key={`${y}-${x}`}
-                              className={`
-                                w-[24px] h-[24px] transition-colors duration-75 border border-transparent
-                                ${getCellColorClass(cell)} 
-                                ${x % 5 === 4 ? 'border-r-gray-300/50' : ''} 
-                                ${y % 5 === 4 ? 'border-b-gray-300/50' : ''}
-                              `}
-                              onMouseDown={(e) => handleMouseDown(e, y, x)}
-                              onMouseEnter={(e) => handleMouseEnter(e, y, x)}
-                            >
-                              {cell === TOOLS.FIXTURE && (
-                                <div className="w-full h-full opacity-20 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,#000_2px,#000_4px)]"></div>
-                              )}
-                            </div>
-                          ))
-                        )}
-
-                        {/* 자유 이동 집기 레이어 */}
+                      <div ref={gridRef} className="grid gap-[1px] bg-slate-300 border-2 border-slate-400 relative" style={{ gridTemplateColumns: `repeat(${grid[0].length}, 24px)`, gridTemplateRows: `repeat(${grid.length}, 24px)` }}>
+                        {grid.map((row, y) => row.map((cell, x) => (
+                          <div key={`${y}-${x}`} className={`w-[24px] h-[24px] transition-colors border border-transparent ${getCellColorClass(cell)} ${x % 5 === 4 ? 'border-r-slate-300/50' : ''} ${y % 5 === 4 ? 'border-b-slate-300/50' : ''}`}
+                               onMouseDown={e => handleMouseDown(e, y, x)} onMouseEnter={e => { setHoverPos({x,y}); if(isDrawing && drawingTool !== null) updateCell(y,x,drawingTool); }} />
+                        )))}
                         {fixtures.map(f => {
-                          const def = FIXTURE_DEFS[f.type];
-                          const isRotated = f.rotation % 180 !== 0;
-                          const width = isRotated ? def.h : def.w;
-                          const height = isRotated ? def.w : def.h;
-
+                          const def = FIXTURE_DEFS[f.type]; const isRotated = f.rotation % 180 !== 0; const w = isRotated ? def.h : def.w; const h = isRotated ? def.w : def.h;
                           return (
-                            <div
-                              key={f.id}
-                              onPointerDown={(e) => startDragging(e, f)}
-                              onPointerUp={(e) => stopDragging(e, f)}
-                              onContextMenu={(e) => handleFixtureContextMenu(e, f.id)}
-                              className={`fixture-item absolute flex items-center justify-center text-[10px] font-bold border-2 shadow-sm cursor-move z-10 transition-transform ${def.bg} ${def.border} ${def.text} ${draggingId === f.id ? 'ring-2 ring-blue-500 scale-105 opacity-80 z-20 shadow-lg' : 'hover:ring-2 hover:ring-red-400'}`}
-                              style={{
-                                left: `${f.x - width / 2}px`, 
-                                top: `${f.y - height / 2}px`,
-                                width: `${width}px`,
-                                height: `${height}px`,
-                                transform: `rotate(0deg)`,
-                              }}
-                              title="드래그 이동 / 클릭 회전 / 우클릭 삭제"
-                            >
-                              <span className="truncate px-1 pointer-events-none opacity-80">
-                                {isRotated ? def.label.substring(0, 1) : def.label}
-                              </span>
+                            <div key={f.id} onPointerDown={e => startDragging(e, f)} onPointerUp={e => stopDragging(e, f)} onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setFixtures(prev => prev.filter(fi => fi.id !== f.id)); }}
+                                 className={`absolute flex items-center justify-center text-[10px] font-bold border-2 shadow-sm cursor-move z-10 ${def.bg} ${def.border} ${def.text} ${draggingId === f.id ? 'ring-2 ring-blue-500 scale-105 opacity-80 z-20 shadow-lg' : 'hover:ring-2 hover:ring-red-400'}`}
+                                 style={{ left: `${f.x - w / 2}px`, top: `${f.y - h / 2}px`, width: `${w}px`, height: `${h}px` }}>
+                              <span className="truncate px-1 pointer-events-none opacity-80">{isRotated ? def.label.substring(0, 1) : def.label}</span>
                             </div>
                           );
                         })}
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="mt-2 text-center text-xs text-gray-500 font-mono w-full">
-                    <EditableField
-                      value={directionText.bottom}
-                      onChange={(val) => setDirectionText(prev => ({ ...prev, bottom: val }))}
-                      inputClassName="w-48 text-xs text-center"
-                    />
+                  <div className="mt-4 text-center text-xs text-slate-500 font-mono w-full">
+                    <EditableField value={directionText.bottom} onChange={v => setDirectionText(p => ({ ...p, bottom: v }))} inputClassName="w-48 text-xs text-center" />
                   </div>
                 </div>
-
               </div>
             </main>
           </div>
 
-          {/* 하단 상태바 */}
-          <footer className="bg-white border-t border-gray-200 p-2 px-4 text-xs text-gray-600 flex justify-between items-center z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] print:hidden">
+          <footer className="bg-white border-t border-slate-200 p-2 px-4 text-xs text-slate-600 flex justify-between items-center z-10 print:hidden">
             <div className="flex gap-4">
-              <span className="flex items-center gap-1 font-medium"><kbd className="bg-gray-100 border border-gray-300 px-1 rounded">좌클릭</kbd> 그리기/회전</span>
-              <span className="flex items-center gap-1 font-medium"><kbd className="bg-gray-100 border border-gray-300 px-1 rounded">드래그</kbd> 자유 이동</span>
-              <span className="flex items-center gap-1 font-medium"><kbd className="bg-gray-100 border border-gray-300 px-1 rounded">우클릭</kbd> 삭제</span>
+              <span><b>아이콘</b> 클릭시 저장/전환</span>
+              <span><b>매장명</b> 클릭시 이름 수정</span>
+              <span><b>좌클릭</b> 그리기/회전</span>
+              <span><b>드래그</b> 자유 이동</span>
             </div>
-            <div className="font-mono bg-gray-100 px-3 py-1 rounded text-gray-800 border border-gray-200">
-              {hoverPos ? (
-                <span>
-                  현재 위치: 가로 <b>{(hoverPos.x * 0.6).toFixed(1)}m</b> / 세로 <b>{(hoverPos.y * 0.6).toFixed(1)}m</b>
-                </span>
-              ) : (
-                <span>도면 위에 마우스를 올려 정확한 거리를 확인하세요</span>
-              )}
+            <div className="font-mono bg-slate-100 px-3 py-1 rounded text-slate-800 border border-slate-200">
+              {hoverPos ? <span>{(hoverPos.x * 0.6).toFixed(1)}m / {(hoverPos.y * 0.6).toFixed(1)}m</span> : '마우스를 도면 위에 올리세요'}
             </div>
           </footer>
 
-          {/* 커스텀 모달 UI */}
           {modal.isOpen && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">{modal.title}</h3>
-                <p className="text-gray-600 mb-6 text-sm leading-relaxed">{modal.message}</p>
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-slate-200">
+                <h3 className="text-lg font-bold text-slate-900 mb-2">{modal.title}</h3>
+                <p className="text-slate-600 mb-6 text-sm leading-relaxed">{modal.message}</p>
                 <div className="flex justify-end gap-2">
-                  {!modal.isAlert && (
-                    <button
-                      onClick={closeModal}
-                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium rounded-md transition-colors"
-                    >
-                      취소
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      if (modal.onConfirm) modal.onConfirm();
-                      closeModal();
-                    }}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
-                  >
-                    확인
-                  </button>
+                  {!modal.isAlert && <button onClick={closeModal} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-medium rounded-xl transition-colors">취소</button>}
+                  <button onClick={() => { if (modal.onConfirm) modal.onConfirm(); closeModal(); }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors shadow-lg shadow-indigo-200">확인</button>
                 </div>
               </div>
             </div>
