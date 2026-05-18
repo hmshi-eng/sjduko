@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>행사 레이아웃 에디터 - 다중 매장 관리</title>
+  <title>행사 레이아웃 에디터 - 실시간 클라우드 관리</title>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -14,6 +14,11 @@
   
   <!-- Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase SDK Compat (실시간 저장 지원) -->
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
 
   <!-- Print Specific Styles -->
   <style>
@@ -40,13 +45,17 @@
     .fixture-item {
       touch-action: none;
     }
-    /* Custom Scrollbar for Sidebar */
-    aside::-webkit-scrollbar {
+    /* Custom Scrollbar for Sidebar & Tabs */
+    .custom-scrollbar::-webkit-scrollbar {
+      height: 6px;
       width: 4px;
     }
-    aside::-webkit-scrollbar-thumb {
+    .custom-scrollbar::-webkit-scrollbar-thumb {
       background: #cbd5e1;
       border-radius: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
     }
   </style>
 </head>
@@ -58,6 +67,7 @@
 
     // --- 상수 및 설정 ---
     const STORAGE_KEY = 'EVENT_LAYOUT_STORES_DATA';
+    const FIREBASE_CONFIG_KEY = 'EVENT_LAYOUT_FIREBASE_CONFIG';
     const DEFAULT_COLS = 22; 
     const DEFAULT_ROWS = 40; 
     const CELL_SIZE = 24;
@@ -90,7 +100,7 @@
     ];
 
     const FIXTURE_DEFS = {
-      [TOOLS.HANGER]: { label: '행거', w: 16, h: 48, bg: 'bg-yellow-300/50', border: 'border-yellow-600/50', text: 'text-yellow-900' },
+      [TOOLS.HANGER]: { label: '행거', w: 24, h: 48, bg: 'bg-yellow-300/50', border: 'border-yellow-600/50', text: 'text-yellow-900' },
       [TOOLS.STAND]: { label: '매대', w: 30, h: 60, bg: 'bg-green-300/50', border: 'border-green-600/50', text: 'text-green-900' }
     };
 
@@ -115,27 +125,32 @@
     };
 
     const Icons = {
-      Eraser: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16C2.5 15.5 2.5 14.5 3 14L13 4C13.5 3.5 14.5 3.5 15 4L20 9C20.5 9.5 20.5 10.5 20 11L11 20" /></svg>
+      Eraser: ({className=''}) => (
+        <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16C2.5 15.5 2.5 14.5 3 14L13 4C13.5 3.5 14.5 3.5 15 4L20 9C20.5 9.5 20.5 10.5 20 11L11 20" /></svg>
       ),
-      Blank: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="M9 9l6 6" /><path d="M15 9l-6 6" /></svg>
+      Blank: ({className=''}) => (
+        <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="M9 9l6 6" /><path d="M15 9l-6 6" /></svg>
       ),
-      Print: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      Print: ({className=''}) => (
+        <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
       ),
-      Store: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+      Store: ({className=''}) => (
+        <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
       ),
-      Plus: () => (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Plus: ({className=''}) => (
+        <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       ),
-      Trash: () => (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      Trash: ({className=''}) => (
+        <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      ),
+      Cloud: ({ className='' }) => (
+        <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      ),
+      Settings: ({className=''}) => (
+        <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
       )
     };
 
-    // 공통 도구 버튼 컴포넌트
     function ToolButton({ active, onClick, icon, label, desc }) {
       return (
         <button 
@@ -156,7 +171,6 @@
       );
     }
 
-    // 수정 가능한 텍스트 필드 컴포넌트
     function EditableField({ value, onChange, className = '', inputClassName = '' }) {
       const [isEditing, setIsEditing] = useState(false);
       const [tempValue, setTempValue] = useState(value);
@@ -203,76 +217,73 @@
     }
 
     function App() {
-      // --- 다중 매장 데이터 로직 ---
+      // --- Firebase 초기화 및 인스턴스 획득 ---
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'stdupont-sales';
+      const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+      const getActiveFirebaseConfig = () => {
+        if (typeof __firebase_config !== 'undefined' && __firebase_config.trim() !== '') {
+          try { return JSON.parse(__firebase_config); } catch (e) { console.error(e); }
+        }
+        const savedCustom = localStorage.getItem(FIREBASE_CONFIG_KEY);
+        if (savedCustom) return JSON.parse(savedCustom);
+        
+        return {
+          apiKey: "AIzaSyAohRURpsnq1XUE53hALotZQkILclKG5us",
+          authDomain: "stdupont-sales.firebaseapp.com",
+          projectId: "stdupont-sales",
+          storageBucket: "stdupont-sales.firebasestorage.app",
+          messagingSenderId: "925651792414",
+          appId: "1:925651792414:web:9ca6230100aaf855cff40f",
+          measurementId: "G-TGNYKLDXMD"
+        };
+      };
+
+      const [firebaseConfig, setFirebaseConfig] = useState(() => getActiveFirebaseConfig());
+      const [user, setUser] = useState(null);
+      const [isCloudEnabled, setIsCloudEnabled] = useState(false);
+      const [dbInstance, setDbInstance] = useState(null);
+
+      // --- 다중 매장 데이터 기본 구조 ---
+      const defaultInitialStores = [{
+        id: 'default',
+        storeName: '현대프리미엄아울렛',
+        title: '스페이스1 행사 레이아웃 에디터',
+        subtitle: '2층 이벤트플라자 | 참여: D,S,P,R,Z & 에스제이듀코+삼성물산',
+        oldDate: '행사일정',
+        newDate: '26.06.05(금) ~ 06.09(화)',
+        directionText: { left: '← 통로 방향', right: '계단/ELV실 방향 →', bottom: '도면 하단 (매장 안쪽)' },
+        grid: generateInitialGrid(),
+        fixtures: []
+      }];
+
       const [stores, setStores] = useState(() => {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) return JSON.parse(saved);
-        return [{
-          id: 'default',
-          storeName: '현대프리미엄아울렛',
-          title: '스페이스1 행사 레이아웃 에디터',
-          subtitle: '2층 이벤트플라자 | 참여: D,S,P,R,Z & 에스제이듀코+삼성물산',
-          oldDate: '행사일정',
-          newDate: '26.06.05(금) ~ 06.09(화)',
-          directionText: { left: '← 통로 방향', right: '계단/ELV실 방향 →', bottom: '도면 하단 (매장 안쪽)' },
-          grid: generateInitialGrid(),
-          fixtures: []
-        }];
-      });
-
-      const [currentStoreId, setCurrentStoreId] = useState(stores[0].id);
-      const currentStore = stores.find(s => s.id === currentStoreId) || stores[0];
-
-      // 개별 상태들 (현재 매장 데이터와 동기화됨)
-      const [grid, setGrid] = useState(currentStore.grid);
-      const [fixtures, setFixtures] = useState(currentStore.fixtures);
-      const [eventInfo, setEventInfo] = useState({
-        storeName: currentStore.storeName,
-        title: currentStore.title,
-        subtitle: currentStore.subtitle,
-        oldDate: currentStore.oldDate,
-        newDate: currentStore.newDate
-      });
-      const [directionText, setDirectionText] = useState(currentStore.directionText);
-
-      // 매장 변경 시 상태 업데이트
-      useEffect(() => {
-        const store = stores.find(s => s.id === currentStoreId);
-        if (store) {
-          setGrid(store.grid);
-          setFixtures(store.fixtures);
-          setEventInfo({
-            storeName: store.storeName,
-            title: store.title,
-            subtitle: store.subtitle,
-            oldDate: store.oldDate,
-            newDate: store.newDate
-          });
-          setDirectionText(store.directionText);
+        if (saved) {
+          try { return JSON.parse(saved); } catch(e) { return defaultInitialStores; }
         }
+        return defaultInitialStores;
+      });
+
+      const [currentStoreId, setCurrentStoreId] = useState(stores[0]?.id || 'default');
+      const currentStoreIdRef = useRef(currentStoreId);
+
+      useEffect(() => {
+        currentStoreIdRef.current = currentStoreId;
       }, [currentStoreId]);
 
-      // 자동 저장 로직
-      useEffect(() => {
-        const updatedStores = stores.map(s => {
-          if (s.id === currentStoreId) {
-            return {
-              ...s,
-              grid,
-              fixtures,
-              storeName: eventInfo.storeName,
-              title: eventInfo.title,
-              subtitle: eventInfo.subtitle,
-              oldDate: eventInfo.oldDate,
-              newDate: eventInfo.newDate,
-              directionText
-            };
-          }
-          return s;
-        });
-        setStores(updatedStores);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedStores));
-      }, [grid, fixtures, eventInfo, directionText]);
+      // 활성(작업) 상태들
+      const currentStore = stores.find(s => s.id === currentStoreId) || stores[0] || defaultInitialStores[0];
+      const [grid, setGrid] = useState(currentStore.grid || generateInitialGrid());
+      const [fixtures, setFixtures] = useState(currentStore.fixtures || []);
+      const [eventInfo, setEventInfo] = useState({
+        storeName: currentStore.storeName || '',
+        title: currentStore.title || '',
+        subtitle: currentStore.subtitle || '',
+        oldDate: currentStore.oldDate || '',
+        newDate: currentStore.newDate || ''
+      });
+      const [directionText, setDirectionText] = useState(currentStore.directionText || { left: '', right: '', bottom: '' });
 
       // --- 에디터 UI 및 통계 로직 ---
       const [activeTool, setActiveTool] = useState(TOOLS.ZONE);
@@ -283,14 +294,215 @@
       const [stats, setStats] = useState({ zone: 0, fixture: 0, pathway: 0, hangers: 0, stands: 0 });
       const [draggingId, setDraggingId] = useState(null);
       const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-      const [showStoreMenu, setShowStoreMenu] = useState(false);
+      const [showConfigModal, setShowConfigModal] = useState(false);
+      const [configInputText, setConfigInputText] = useState('');
       const gridRef = useRef(null);
+
+      const [showNewStoreModal, setShowNewStoreModal] = useState(false);
+      const [newStoreInputs, setNewStoreInputs] = useState({
+        storeName: '', title: '', subtitle: '', newDate: ''
+      });
 
       const [modal, setModal] = useState({ isOpen: false, title: '', message: '', onConfirm: null, isAlert: false });
       const showAlert = (title, message) => setModal({ isOpen: true, title, message, onConfirm: null, isAlert: true });
       const showConfirm = (title, message, onConfirm) => setModal({ isOpen: true, title, message, onConfirm, isAlert: false });
       const closeModal = () => setModal({ isOpen: false, title: '', message: '', onConfirm: null, isAlert: false });
 
+      // --- Firebase Auth & Connection Setup ---
+      useEffect(() => {
+        if (!firebaseConfig) {
+          setIsCloudEnabled(false); setDbInstance(null); setUser(null);
+          return;
+        }
+
+        try {
+          let appInstance = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+          const authInstance = firebase.auth(appInstance);
+          setDbInstance(firebase.firestore(appInstance));
+
+          const performAuth = async () => {
+            if (initialAuthToken) await authInstance.signInWithCustomToken(initialAuthToken);
+            else await authInstance.signInAnonymously();
+            setIsCloudEnabled(true);
+          };
+
+          performAuth().catch(err => { console.error(err); setIsCloudEnabled(false); });
+          const unsubscribe = authInstance.onAuthStateChanged(setUser);
+          return () => unsubscribe();
+        } catch (e) {
+          console.error(e); setIsCloudEnabled(false);
+        }
+      }, [firebaseConfig, initialAuthToken]);
+
+      // --- Cloud Real-time Fetch & Sync (onSnapshot) ---
+      useEffect(() => {
+        if (!isCloudEnabled || !user || !dbInstance) return;
+
+        const storesCollection = dbInstance.collection('artifacts').doc(appId)
+          .collection('public').doc('data').collection('stores');
+
+        const unsubscribe = storesCollection.onSnapshot((snapshot) => {
+          if (isDrawing || draggingId) return; // 작업 중 방해 금지
+
+          const cloudStores = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            try {
+              cloudStores.push({
+                id: doc.id,
+                storeName: data.storeName, title: data.title, subtitle: data.subtitle,
+                oldDate: data.oldDate, newDate: data.newDate, directionText: data.directionText,
+                grid: data.gridSerialized ? JSON.parse(data.gridSerialized) : generateInitialGrid(),
+                fixtures: data.fixtures || []
+              });
+            } catch (e) { console.error("Store Deserialization Failed:", e); }
+          });
+
+          if (cloudStores.length > 0) {
+            cloudStores.sort((a, b) => a.id.localeCompare(b.id));
+            setStores(cloudStores);
+            
+            const currentId = currentStoreIdRef.current;
+            const updatedCurrent = cloudStores.find(s => s.id === currentId);
+            
+            if (!updatedCurrent) {
+              handleSwitchStore(cloudStores[0]);
+            } else {
+              setGrid(updatedCurrent.grid);
+              setFixtures(updatedCurrent.fixtures);
+              setEventInfo({
+                storeName: updatedCurrent.storeName, title: updatedCurrent.title,
+                subtitle: updatedCurrent.subtitle, oldDate: updatedCurrent.oldDate, newDate: updatedCurrent.newDate
+              });
+              setDirectionText(updatedCurrent.directionText);
+            }
+          }
+        }, console.error);
+
+        return () => unsubscribe();
+      }, [isCloudEnabled, user, dbInstance, isDrawing, draggingId, appId]); 
+
+      // --- Local & Cloud Real-time Auto Save (Debounce) ---
+      useEffect(() => {
+        setStores(prevStores => {
+          let isChanged = false;
+          const updatedStores = prevStores.map(s => {
+            if (s.id === currentStoreId) {
+              const newData = {
+                ...s, grid, fixtures, storeName: eventInfo.storeName, title: eventInfo.title,
+                subtitle: eventInfo.subtitle, oldDate: eventInfo.oldDate, newDate: eventInfo.newDate, directionText
+              };
+              if (JSON.stringify(s) !== JSON.stringify(newData)) {
+                isChanged = true;
+                return newData;
+              }
+            }
+            return s;
+          });
+
+          if (isChanged) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedStores));
+            return updatedStores;
+          }
+          return prevStores;
+        });
+
+        if (!isCloudEnabled || !user || !dbInstance) return;
+
+        const syncTimeout = setTimeout(async () => {
+          try {
+            await dbInstance.collection('artifacts').doc(appId)
+              .collection('public').doc('data')
+              .collection('stores').doc(currentStoreId).set({
+                id: currentStoreId, storeName: eventInfo.storeName, title: eventInfo.title, subtitle: eventInfo.subtitle,
+                oldDate: eventInfo.oldDate, newDate: eventInfo.newDate, directionText,
+                gridSerialized: JSON.stringify(grid), fixtures,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
+          } catch (err) { console.error(err); }
+        }, 800);
+
+        return () => clearTimeout(syncTimeout);
+      }, [grid, fixtures, eventInfo, directionText, currentStoreId, isCloudEnabled, user, dbInstance, appId]);
+
+      // --- 화면(매장 탭) 전환 함수 ---
+      const handleSwitchStore = useCallback((store) => {
+        if (!store) return;
+        setCurrentStoreId(store.id);
+        setGrid(store.grid || generateInitialGrid());
+        setFixtures(store.fixtures || []);
+        setEventInfo({
+          storeName: store.storeName || '', title: store.title || '', subtitle: store.subtitle || '',
+          oldDate: store.oldDate || '', newDate: store.newDate || ''
+        });
+        setDirectionText(store.directionText || { left: '', right: '', bottom: '' });
+      }, []);
+
+      // --- 신규 매장 생성 ---
+      const handleCreateNewStore = () => {
+        if (!newStoreInputs.storeName.trim()) {
+          showAlert('입력 오류', '매장명은 필수 입력 항목입니다.');
+          return;
+        }
+        const newId = 'store_' + Date.now();
+        const newStore = {
+          id: newId,
+          storeName: newStoreInputs.storeName,
+          title: newStoreInputs.title || '새로운 행사 레이아웃',
+          subtitle: newStoreInputs.subtitle || '위치 및 브랜드를 지정하세요',
+          oldDate: '행사일정',
+          newDate: newStoreInputs.newDate || '일정을 지정하세요',
+          directionText: { left: '← 통로 방향', right: '방향 →', bottom: '도면 하단' },
+          grid: generateInitialGrid(),
+          fixtures: []
+        };
+
+        setStores(prev => {
+          const nextStores = [...prev, newStore];
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStores));
+          return nextStores;
+        });
+        
+        handleSwitchStore(newStore);
+        setShowNewStoreModal(false);
+        setNewStoreInputs({ storeName: '', title: '', subtitle: '', newDate: '' });
+
+        if (isCloudEnabled && dbInstance) {
+          dbInstance.collection('artifacts').doc(appId)
+            .collection('public').doc('data')
+            .collection('stores').doc(newId).set({
+              id: newId, storeName: newStore.storeName, title: newStore.title, subtitle: newStore.subtitle,
+              oldDate: newStore.oldDate, newDate: newStore.newDate, directionText: newStore.directionText,
+              gridSerialized: JSON.stringify(newStore.grid), fixtures: newStore.fixtures,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true }).catch(console.error);
+        }
+      };
+
+      const deleteStore = (e, id) => {
+        e.stopPropagation();
+        if (stores.length <= 1) {
+          showAlert('알림', '최소 하나의 매장은 유지되어야 합니다.');
+          return;
+        }
+        showConfirm('매장 삭제', '해당 매장의 모든 데이터를 영구적으로 삭제하시겠습니까?', () => {
+          setStores(prev => {
+            const filtered = prev.filter(s => s.id !== id);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+            if (currentStoreId === id) {
+              handleSwitchStore(filtered[0]);
+            }
+            return filtered;
+          });
+          
+          if (isCloudEnabled && dbInstance) {
+            dbInstance.collection('artifacts').doc(appId).collection('public').doc('data')
+              .collection('stores').doc(id).delete().catch(console.error);
+          }
+        });
+      };
+
+      // --- 통계 ---
       useEffect(() => {
         let zone = 0, fixture = 0, pathway = 0;
         grid.forEach(row => {
@@ -305,6 +517,7 @@
         setStats({ zone, fixture, pathway, hangers, stands });
       }, [grid, fixtures]);
 
+      // --- 그리기 제어 ---
       const updateCell = useCallback((y, x, tool) => {
         setGrid(prev => {
           const newGrid = [...prev];
@@ -340,9 +553,7 @@
         const rect = e.currentTarget.getBoundingClientRect();
         setDraggingId(fixture.id);
         setDragOffset({ x: e.clientX - rect.left - rect.width / 2, y: e.clientY - rect.top - rect.height / 2 });
-        e.currentTarget.dataset.startX = e.clientX; 
-        e.currentTarget.dataset.startY = e.clientY; 
-        e.currentTarget.dataset.startTime = Date.now();
+        e.currentTarget.dataset.startX = e.clientX; e.currentTarget.dataset.startY = e.clientY; e.currentTarget.dataset.startTime = Date.now();
       };
 
       const onPointerMove = (e) => {
@@ -361,91 +572,103 @@
         setDraggingId(null);
       };
 
-      const addNewStore = () => {
-        const newId = 'store_' + Date.now();
-        const newStore = {
-          id: newId,
-          storeName: '새 매장',
-          title: '새로운 행사 레이아웃',
-          subtitle: '상세 위치 정보를 입력하세요',
-          oldDate: '행사일정',
-          newDate: '기간을 입력하세요',
-          directionText: { left: '← 통로 방향', right: '방향 →', bottom: '도면 하단' },
-          grid: generateInitialGrid(),
-          fixtures: []
-        };
-        setStores(prev => [...prev, newStore]);
-        setCurrentStoreId(newId);
-        setShowStoreMenu(false);
-      };
-
-      const deleteStore = (e, id) => {
-        e.stopPropagation();
-        if (stores.length <= 1) {
-          showAlert('알림', '최소 하나의 매장은 유지되어야 합니다.');
-          return;
-        }
-        showConfirm('매장 삭제', '이 매장의 모든 데이터를 영구적으로 삭제하시겠습니까?', () => {
-          const filtered = stores.filter(s => s.id !== id);
-          setStores(filtered);
-          if (currentStoreId === id) setCurrentStoreId(filtered[0].id);
-        });
+      const handleSaveCustomFirebase = () => {
+        try {
+          if (!configInputText.trim()) {
+            localStorage.removeItem(FIREBASE_CONFIG_KEY); setFirebaseConfig(null);
+            showAlert('설정 해제', '커스텀 클라우드 연동이 해제되었습니다.'); setShowConfigModal(false); return;
+          }
+          const parsed = JSON.parse(configInputText);
+          localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(parsed));
+          setFirebaseConfig(parsed); setShowConfigModal(false);
+          showAlert('설정 성공', '클라우드 정보가 적용되었습니다.');
+        } catch (e) { showAlert('입력 에러', '올바른 JSON 형식이 아닙니다.'); }
       };
 
       const handleMouseLeaveGrid = () => { setIsDrawing(false); setDrawingTool(null); setHoverPos(null); };
+      const handleMouseEnter = (e, y, x) => {
+        setHoverPos({ x, y });
+        if (isDrawing && drawingTool !== null) updateCell(y, x, drawingTool);
+      };
 
       return (
-        <div className="flex flex-col h-screen bg-gray-50 text-gray-800 font-sans select-none print:h-auto print:block print:bg-white" 
+        <div className="flex flex-col h-screen bg-slate-200 text-gray-800 font-sans select-none print:h-auto print:block print:bg-white" 
              onMouseUp={() => { setIsDrawing(false); setDrawingTool(null); }} 
              onPointerUp={() => setDraggingId(null)} onPointerMove={onPointerMove}>
           
-          <header className="bg-slate-800 text-white p-4 flex flex-col md:flex-row justify-between items-start md:items-center shadow-md z-30 print:bg-white print:text-black print:shadow-none print:p-0 print:mb-6">
-            <div className="mb-2 md:mb-0 relative">
-              <h1 className="text-xl font-bold flex items-center gap-2 flex-wrap">
-                <div className="relative flex items-center bg-white pr-2 rounded-lg shadow-sm print:border print:border-gray-400">
-                  <button onClick={() => setShowStoreMenu(!showStoreMenu)} className="p-1.5 pl-2 text-slate-800 hover:bg-slate-100 rounded-l-lg transition-colors no-print border-r border-slate-100" title="매장 목록">
-                    <Icons.Store />
-                  </button>
-                  <div className="pl-1.5">
-                    <EditableField 
-                      value={eventInfo.storeName} 
-                      onChange={(val) => setEventInfo(prev => ({ ...prev, storeName: val }))} 
-                      className="text-slate-800 text-sm font-black tracking-tight cursor-text"
-                      inputClassName="text-sm px-1 w-32 font-black"
-                    />
-                  </div>
-                  {showStoreMenu && (
-                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 text-slate-800 overflow-hidden z-50 no-print">
-                      <div className="p-2 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <span className="text-xs font-bold text-slate-500 uppercase px-2">내 매장 목록</span>
-                        <button onClick={addNewStore} className="p-1.5 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-colors" title="새 매장 추가"><Icons.Plus /></button>
-                      </div>
-                      <div className="max-h-60 overflow-y-auto">
-                        {stores.map(s => (
-                          <div key={s.id} onClick={() => { setCurrentStoreId(s.id); setShowStoreMenu(false); }}
-                               className={`flex items-center justify-between p-3 cursor-pointer transition-colors group ${currentStoreId === s.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-slate-50'}`}>
-                            <span className="truncate flex-1">{s.storeName}</span>
-                            <button onClick={(e) => deleteStore(e, s.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Icons.Trash /></button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <EditableField value={eventInfo.title} onChange={(val) => setEventInfo(prev => ({ ...prev, title: val }))} inputClassName="w-64" />
+          {/* Header */}
+          <header className="bg-slate-800 text-white p-4 pb-3 flex flex-col md:flex-row justify-between items-start md:items-center z-30 print:bg-white print:text-black print:shadow-none print:p-0 print:mb-6">
+            <div className="mb-2 md:mb-0">
+              <h1 className="text-xl font-bold flex items-center gap-3 flex-wrap">
+                <span className="text-indigo-400 no-print"><Icons.Store className="w-5 h-5" /></span>
+                <EditableField value={eventInfo.title} onChange={(val) => setEventInfo(prev => ({ ...prev, title: val }))} inputClassName="w-64 text-slate-900" />
+                
+                {/* 실시간 클라우드 동기화 상태 뱃지 */}
+                <span className="no-print text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 bg-slate-700 text-slate-200 ml-2 border border-slate-600">
+                  <span className={`w-2.5 h-2.5 rounded-full ${isCloudEnabled ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-amber-400'}`}></span>
+                  {isCloudEnabled ? '실시간 동기화 켜짐' : '로컬 자동 저장'}
+                </span>
               </h1>
-              <div className="mt-1">
+              <div className="mt-1 md:ml-8">
                 <EditableField value={eventInfo.subtitle} onChange={(val) => setEventInfo(prev => ({ ...prev, subtitle: val }))} className="text-slate-300 text-sm inline-block print:text-gray-600" inputClassName="text-sm text-slate-800 w-96" />
               </div>
             </div>
-            <div className="text-left md:text-right text-sm bg-slate-700/50 p-2 rounded border border-slate-600 flex flex-col items-start md:items-end gap-1 min-w-[250px] print:bg-transparent print:border-none print:p-0">
+            <div className="text-left md:text-right text-sm bg-slate-700/50 p-2 rounded-lg border border-slate-600 flex flex-col items-start md:items-end gap-1 min-w-[250px] print:bg-transparent print:border-none print:p-0">
               <EditableField value={eventInfo.oldDate} onChange={(val) => setEventInfo(prev => ({ ...prev, oldDate: val }))} className="text-slate-300 text-xs font-bold print:text-gray-500" />
               <EditableField value={eventInfo.newDate} onChange={(val) => setEventInfo(prev => ({ ...prev, newDate: val }))} className="text-yellow-300 font-bold print:text-black print:text-lg" />
             </div>
           </header>
 
-          <div className="flex flex-1 overflow-hidden print:overflow-visible print:block">
-            <aside className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col shadow-sm z-10 overflow-y-auto print:hidden">
+          {/* 엑셀 시트형 상단 탭 바 */}
+          <div className="bg-slate-200 border-b border-slate-300 px-3 pt-2 flex items-end overflow-x-auto no-print custom-scrollbar z-20 shadow-sm">
+            {stores.map(store => {
+              const isActive = currentStoreId === store.id;
+              return (
+                <div 
+                  key={store.id}
+                  onClick={() => handleSwitchStore(store)}
+                  className={`group relative flex items-center justify-between min-w-[140px] max-w-[220px] px-4 py-2.5 mr-1 rounded-t-xl cursor-pointer text-sm font-bold transition-all ${
+                    isActive 
+                      ? 'bg-white text-indigo-700 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] border-t border-x border-slate-200 z-10' 
+                      : 'bg-slate-300 text-slate-500 hover:bg-slate-50 hover:text-slate-700 border-t border-x border-transparent'
+                  }`}
+                >
+                  {isActive ? (
+                    <EditableField 
+                      value={eventInfo.storeName} 
+                      onChange={(val) => setEventInfo(prev => ({ ...prev, storeName: val }))} 
+                      className="cursor-text truncate mr-6 outline-none"
+                      inputClassName="w-28 px-1"
+                    />
+                  ) : (
+                    <span className="truncate mr-6">{store.storeName}</span>
+                  )}
+                  
+                  <button 
+                    onClick={(e) => deleteStore(e, store.id)}
+                    className={`absolute right-2 p-1 rounded-full hover:bg-red-100 hover:text-red-600 transition-all ${isActive ? 'text-slate-400 opacity-100' : 'text-slate-400 opacity-0 group-hover:opacity-100'}`}
+                    title="매장 탭 삭제"
+                  >
+                    <Icons.Trash className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+            
+            {/* 새 매장 탭 추가 (+) 버튼 */}
+            <button 
+              onClick={() => setShowNewStoreModal(true)}
+              className="flex items-center justify-center w-9 h-9 mb-1.5 ml-1 rounded-lg bg-slate-300 hover:bg-indigo-600 text-slate-600 hover:text-white transition-colors flex-shrink-0 shadow-sm"
+              title="새 매장 탭 추가"
+            >
+              <Icons.Plus className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex flex-1 overflow-hidden print:overflow-visible print:block relative">
+            {/* Sidebar */}
+            <aside className="w-64 bg-white border-r border-gray-200 p-4 flex flex-col shadow-sm z-10 overflow-y-auto print:hidden custom-scrollbar">
+              
               <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">기초 그리기</h2>
               <div className="space-y-2 mb-6">
                 <div>
@@ -465,7 +688,7 @@
               <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">집기 배치</h2>
               <div className="space-y-2 mb-6">
                 <ToolButton active={activeTool === TOOLS.FIXTURE} onClick={() => setActiveTool(TOOLS.FIXTURE)} icon={<div className="w-4 h-4 bg-orange-400/50 border border-orange-500/50 rounded-sm"></div>} label="자유형 집기" desc="칸 단위 칠하기" />
-                <ToolButton active={activeTool === TOOLS.HANGER} onClick={() => setActiveTool(TOOLS.HANGER)} icon={<div className="w-4 h-6 bg-yellow-300/50 border border-yellow-600/50 rounded-sm"></div>} label="행거 (40x120cm)" desc="자유 이동 / 클릭 회전" />
+                <ToolButton active={activeTool === TOOLS.HANGER} onClick={() => setActiveTool(TOOLS.HANGER)} icon={<div className="w-6 h-6 bg-yellow-300/50 border border-yellow-600/50 rounded-sm"></div>} label="행거 (60x120cm)" desc="자유 이동 / 클릭 회전" />
                 <ToolButton active={activeTool === TOOLS.STAND} onClick={() => setActiveTool(TOOLS.STAND)} icon={<div className="w-6 h-6 bg-green-300/50 border border-green-600/50 rounded-sm"></div>} label="매대 (75x150cm)" desc="자유 이동 / 클릭 회전" />
               </div>
 
@@ -474,6 +697,16 @@
                 <ToolButton active={activeTool === TOOLS.ERASER} onClick={() => setActiveTool(TOOLS.ERASER)} icon={<Icons.Eraser />} label="지우개" desc="요소 삭제 (우클릭)" />
                 <button onClick={() => window.print()} className="w-full flex items-center gap-3 p-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-sm font-bold"><Icons.Print /> A4 출력 / PDF 저장</button>
                 <button onClick={() => showConfirm('초기화', '현재 매장의 모든 데이터를 지우시겠습니까?', () => { setGrid(generateInitialGrid()); setFixtures([]); })} className="w-full flex items-center gap-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors text-sm font-bold"><Icons.Blank /> 도면 초기화</button>
+              </div>
+
+              <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider font-mono">깃허브 / 클라우드 연동</h2>
+              <div className="space-y-2 mb-6">
+                <button onClick={() => { 
+                  setConfigInputText(firebaseConfig ? JSON.stringify(firebaseConfig, null, 2) : ''); 
+                  setShowConfigModal(true); 
+                }} className="w-full flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-colors text-sm font-bold">
+                  <Icons.Settings /> 연동 및 DB 관리
+                </button>
               </div>
 
               <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">도면 크기 조절</h2>
@@ -505,9 +738,9 @@
               </div>
             </aside>
 
-            <main className="flex-1 bg-slate-200 overflow-auto relative print:bg-white print:overflow-visible print:block" onContextMenu={e => e.preventDefault()}>
+            <main className="flex-1 bg-slate-100 overflow-auto relative print:bg-white print:overflow-visible print:block" onContextMenu={e => e.preventDefault()}>
               <div className="absolute inset-0 p-8 flex justify-center items-start min-w-max print:relative print:p-0 print:pt-4 print:flex">
-                <div className="bg-white shadow-2xl p-6 rounded-2xl flex flex-col items-center print:shadow-none print:p-0">
+                <div className="bg-white shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-slate-200 p-6 rounded-2xl flex flex-col items-center print:border-none print:shadow-none print:p-0">
                   <div className="mb-2 flex justify-between w-full text-xs text-gray-500 font-mono">
                     <EditableField value={directionText.left} onChange={v => setDirectionText(p => ({ ...p, left: v }))} inputClassName="w-32 text-xs" />
                     <EditableField value={directionText.right} onChange={v => setDirectionText(p => ({ ...p, right: v }))} inputClassName="w-36 text-xs text-right" className="text-right" />
@@ -532,10 +765,10 @@
                       <div className="grid gap-[1px] mb-1 ml-[2px]" style={{ gridTemplateColumns: `repeat(${grid[0].length}, 24px)` }}>
                         {grid[0].map((_, x) => <div key={x} className="w-[24px] flex items-end justify-center text-[8px] text-slate-400 font-mono h-4">{(x+1)}</div>)}
                       </div>
-                      <div ref={gridRef} className="grid gap-[1px] bg-slate-300 border-2 border-slate-400 relative" style={{ gridTemplateColumns: `repeat(${grid[0].length}, 24px)`, gridTemplateRows: `repeat(${grid.length}, 24px)` }}>
+                      <div ref={gridRef} className="grid gap-[1px] bg-slate-300 border-2 border-slate-400 relative" style={{ gridTemplateColumns: `repeat(${grid[0].length}, 24px)`, gridTemplateRows: `repeat(${grid.length}, 24px)` }} onMouseLeave={handleMouseLeaveGrid}>
                         {grid.map((row, y) => row.map((cell, x) => (
                           <div key={`${y}-${x}`} className={`w-[24px] h-[24px] transition-colors border border-transparent ${getCellColorClass(cell)} ${x % 5 === 4 ? 'border-r-slate-300/50' : ''} ${y % 5 === 4 ? 'border-b-slate-300/50' : ''}`}
-                               onMouseDown={e => handleMouseDown(e, y, x)} onMouseEnter={e => { setHoverPos({x,y}); if(isDrawing && drawingTool !== null) updateCell(y,x,drawingTool); }} />
+                               onMouseDown={e => handleMouseDown(e, y, x)} onMouseEnter={e => handleMouseEnter(e, y, x)} />
                         )))}
                         {fixtures.map(f => {
                           const def = FIXTURE_DEFS[f.type]; const isRotated = f.rotation % 180 !== 0; const w = isRotated ? def.h : def.w; const h = isRotated ? def.w : def.h;
@@ -560,8 +793,8 @@
 
           <footer className="bg-white border-t border-slate-200 p-2 px-4 text-xs text-slate-600 flex justify-between items-center z-10 print:hidden">
             <div className="flex gap-4">
-              <span><b>아이콘</b> 클릭시 저장/전환</span>
-              <span><b>매장명</b> 클릭시 이름 수정</span>
+              <span><b>탭(상단)</b> 클릭시 즉시 이동</span>
+              <span><b>이름</b> 클릭시 수정</span>
               <span><b>좌클릭</b> 그리기/회전</span>
               <span><b>드래그</b> 자유 이동</span>
             </div>
@@ -570,8 +803,108 @@
             </div>
           </footer>
 
+          {/* 신규 매장 생성 전용 입력 팝업 모달 */}
+          {showNewStoreModal && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm no-print">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 border border-slate-200 animate-fade-in">
+                <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                  <Icons.Store className="text-indigo-600" /> 신규 탭(매장) 추가
+                </h3>
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">매장명 (필수, 탭 이름으로 표시)</label>
+                    <input
+                      type="text"
+                      value={newStoreInputs.storeName}
+                      onChange={(e) => setNewStoreInputs(prev => ({ ...prev, storeName: e.target.value }))}
+                      placeholder="예: 현대프리미엄아울렛 대구점"
+                      className="w-full text-sm p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">위치 / 행사 도면명</label>
+                    <input
+                      type="text"
+                      value={newStoreInputs.title}
+                      onChange={(e) => setNewStoreInputs(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="예: 2층 본관 대행사장"
+                      className="w-full text-sm p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">참여 브랜드 및 설명</label>
+                    <input
+                      type="text"
+                      value={newStoreInputs.subtitle}
+                      onChange={(e) => setNewStoreInputs(prev => ({ ...prev, subtitle: e.target.value }))}
+                      placeholder="예: 참여: D,S,P,R,Z & 에스제이듀코"
+                      className="w-full text-sm p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">행사 일정</label>
+                    <input
+                      type="text"
+                      value={newStoreInputs.newDate}
+                      onChange={(e) => setNewStoreInputs(prev => ({ ...prev, newDate: e.target.value }))}
+                      placeholder="예: 26.06.05(금) ~ 06.09(화)"
+                      className="w-full text-sm p-2.5 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button 
+                    onClick={() => {
+                      setShowNewStoreModal(false);
+                      setNewStoreInputs({ storeName: '', title: '', subtitle: '', newDate: '' });
+                    }} 
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-medium rounded-xl transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button 
+                    onClick={handleCreateNewStore} 
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl transition-colors shadow-lg shadow-indigo-200"
+                  >
+                    탭 생성
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 클라우드 DB 상세 설정 모달 */}
+          {showConfigModal && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm no-print">
+              <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-lg w-full mx-4 border border-slate-200">
+                <h3 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+                  <Icons.Cloud className="text-indigo-600" /> Firebase 실시간 DB 연동
+                </h3>
+                <p className="text-slate-500 mb-4 text-xs leading-relaxed">
+                  깃허브 페이지 등 외부 호스팅에서 여러 유저와 동시에 협업하려면 본인의 <b>Firebase 프로젝트</b>에서 설정 값을 복사하여 아래에 입력하세요. 
+                  미입력 시 에디터는 로컬 스토리지 단독 보존 모드로 무중단 작동합니다.
+                </p>
+                <textarea
+                  value={configInputText}
+                  onChange={(e) => setConfigInputText(e.target.value)}
+                  placeholder={`{\n  "apiKey": "AIzaSy...",\n  "authDomain": "...",\n  "projectId": "...",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}`}
+                  className="w-full h-44 font-mono text-xs p-3 bg-slate-900 text-emerald-400 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+                ></textarea>
+                <div className="flex justify-between items-center text-xs text-slate-400">
+                  <span>* 입력창을 완전히 비우고 확인을 누르면 설정이 해제됩니다.</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowConfigModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium rounded-xl transition-colors">취소</button>
+                    <button onClick={handleSaveCustomFirebase} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-lg shadow-indigo-200">설정 적용</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 커스텀 메시지창 모달 */}
           {modal.isOpen && (
-            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm">
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] backdrop-blur-sm no-print">
               <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border border-slate-200">
                 <h3 className="text-lg font-bold text-slate-900 mb-2">{modal.title}</h3>
                 <p className="text-slate-600 mb-6 text-sm leading-relaxed">{modal.message}</p>
