@@ -151,6 +151,7 @@
       )
     };
 
+    // 공통 도구 버튼 컴포넌트
     function ToolButton({ active, onClick, icon, label, desc }) {
       return (
         <button 
@@ -171,6 +172,7 @@
       );
     }
 
+    // 수정 가능한 텍스트 필드 컴포넌트
     function EditableField({ value, onChange, className = '', inputClassName = '' }) {
       const [isEditing, setIsEditing] = useState(false);
       const [tempValue, setTempValue] = useState(value);
@@ -298,6 +300,16 @@
       const [configInputText, setConfigInputText] = useState('');
       const gridRef = useRef(null);
 
+      // 충돌 방지용 상태 Ref
+      const isDrawingRef = useRef(isDrawing);
+      const draggingIdRef = useRef(draggingId);
+      const pendingSaveRef = useRef(false);
+
+      useEffect(() => {
+        isDrawingRef.current = isDrawing;
+        draggingIdRef.current = draggingId;
+      }, [isDrawing, draggingId]);
+
       const [showNewStoreModal, setShowNewStoreModal] = useState(false);
       const [newStoreInputs, setNewStoreInputs] = useState({
         storeName: '', title: '', subtitle: '', newDate: ''
@@ -308,7 +320,7 @@
       const showConfirm = (title, message, onConfirm) => setModal({ isOpen: true, title, message, onConfirm, isAlert: false });
       const closeModal = () => setModal({ isOpen: false, title: '', message: '', onConfirm: null, isAlert: false });
 
-      // --- Firebase Auth & Connection Setup ---
+      // --- Firebase Auth Setup ---
       useEffect(() => {
         if (!firebaseConfig) {
           setIsCloudEnabled(false); setDbInstance(null); setUser(null);
@@ -342,7 +354,8 @@
           .collection('public').doc('data').collection('stores');
 
         const unsubscribe = storesCollection.onSnapshot((snapshot) => {
-          if (isDrawing || draggingId) return; // 작업 중 방해 금지
+          // 로컬에서 작업 중이거나 저장 버퍼 대기 중인 상태에서는 덮어쓰기 무시
+          if (isDrawingRef.current || draggingIdRef.current || pendingSaveRef.current) return; 
 
           const cloudStores = [];
           snapshot.forEach((doc) => {
@@ -380,7 +393,7 @@
         }, console.error);
 
         return () => unsubscribe();
-      }, [isCloudEnabled, user, dbInstance, isDrawing, draggingId, appId]); 
+      }, [isCloudEnabled, user, dbInstance, appId]); // isDrawing 등 수시로 바뀌는 변수 제거하여 깜빡임 완벽 차단
 
       // --- Local & Cloud Real-time Auto Save (Debounce) ---
       useEffect(() => {
@@ -409,6 +422,7 @@
 
         if (!isCloudEnabled || !user || !dbInstance) return;
 
+        pendingSaveRef.current = true;
         const syncTimeout = setTimeout(async () => {
           try {
             await dbInstance.collection('artifacts').doc(appId)
@@ -419,7 +433,13 @@
                 gridSerialized: JSON.stringify(grid), fixtures,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
               }, { merge: true });
-          } catch (err) { console.error(err); }
+              
+              // 저장이 완료된 후 0.3초 대기하여 메아리 덮어쓰기 방지
+              setTimeout(() => { pendingSaveRef.current = false; }, 300);
+          } catch (err) { 
+            console.error(err); 
+            pendingSaveRef.current = false; 
+          }
         }, 800);
 
         return () => clearTimeout(syncTimeout);
